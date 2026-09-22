@@ -1,26 +1,29 @@
 "use server";
 
-import { CredentialsSignin } from "@auth/core/errors";
+import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
 
 export type LoginState = { ok: boolean; error?: string };
 
 export async function loginAction(_prev: LoginState | undefined, formData: FormData): Promise<LoginState> {
-  const email = formData.get("email");
-  const password = formData.get("password");
-  const callbackUrl = "/erp";
-
   try {
-    await signIn("credentials", {
-      email: String(email),
-      password: String(password),
-      redirectTo: callbackUrl,
+    // Handle failed credentials here rather than following the auth error redirect.
+    const destination = await signIn("credentials", {
+      email: String(formData.get("email") ?? ""),
+      password: String(formData.get("password") ?? ""),
+      redirect: false,
+      redirectTo: "/erp",
     });
+    const result = new URL(String(destination), "http://localhost");
+    if (result.searchParams.has("error") || result.pathname !== "/erp") {
+      return { ok: false, error: "帳號或密碼錯誤" };
+    }
   } catch (err) {
-    if (err instanceof CredentialsSignin) {
-      return { ok: false, error: "\u5e33\u865f\u6216\u5bc6\u78bc\u932f\u8aa4" };
+    if (err instanceof AuthError) {
+      return { ok: false, error: err.type === "CredentialsSignin" ? "帳號或密碼錯誤" : "暫時無法登入，請稍後再試" };
     }
     throw err;
   }
-  return { ok: true };
+  redirect("/erp");
 }
