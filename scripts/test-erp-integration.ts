@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd(),true);
+async function main(){
+ if(process.env.ERP_ENVIRONMENT!=='development'&&process.env.ERP_ENVIRONMENT!=='test')throw Error('Integration tests require a development database');
+ const url=new URL(process.env.DATABASE_URL!);
+ if(url.host+url.pathname!==process.env.ERP_DATABASE_TARGET)throw Error('Target mismatch');
+ const schema='erp_test_'+randomUUID().replaceAll('-','');url.searchParams.set('schema',schema);url.searchParams.set('connect_timeout','30');process.env.DATABASE_URL=url.toString();
+ await import('node:fs/promises').then(fs=>fs.writeFile('artifacts/last-integration-schema.txt',schema));
+ const result=spawnSync(process.execPath,['scripts/database-command.cjs','migrate-deploy'],{env:process.env,encoding:'utf8'});if(result.status!==0)throw Error('Isolated test schema migration failed: '+result.stdout+' '+result.stderr);
+ const {default:db}=await import('../src/lib/prisma');
+ try{
+ const {execute}=await import('../src/lib/erp/service');
+ const {snapshot}=await import('../src/lib/erp/read');
+ const admin=await db.user.create({data:{email:'integration@example.invalid',passwordHash:'unused',role:'ADMIN'}});
+ const run=(input:unknown,key=randomUUID())=>execute(admin.id,key,input);
+ const sku=await run({action:'sku',code:'TEST-SKU',name:'Test item',price:'60'});
+ const warehouse=await run({action:'warehouse',code:'A',name:'A'});
+ const otherWarehouse=await run({action:'warehouse',code:'B',name:'B'});
+ const customer=await run({action:'customer',code:'C',name:'Customer'});
+ const supplier=await run({action:'supplier',code:'S',name:'Supplier'});
+ const receive=(price:string)=>run({action:'receive',supplierId:supplier,warehouseId:warehouse,lines:[{skuId:sku,quantity:10,price}]});
+ await receive('40');await receive('42.50');console.log('Receipts passed');
+ const orderId=await run({action:'sale',customerId:customer,lines:[{skuId:sku,quantity:12,price:'60'}]});
+ const line=await db.salesLine.findFirstOrThrow({where:{orderId}});
+ await assert.rejects(run({action:'ship',orderId,warehouseId:otherWarehouse,lines:[{lineId:line.id,quantity:12}]}));
+ const input={action:'ship',orderId,warehouseId:warehouse,lines:[{lineId:line.id,quantity:12}]};
+ const key=randomUUID();const [a,b]=await Promise.all([run(input,key),run(input,key)]);assert.equal(a,b);console.log('Duplicate shipment passed');
+ assert.equal(await db.shipment.count({where:{state:'POSTED'}}),1);
+ let snap=await snapshot(admin.id);let order=snap.orders.find((o:{id:string})=>o.id===orderId);assert.equal(order.cost,'485.00');assert.equal(order.profit,'235.00');
+ await assert.rejects(run({...input,lines:[{lineId:line.id,quantity:1}]}));
+ await assert.rejects(run({action:'payment',orderId,amount:'721'}));
+ console.log('Cost assertions passed');const pay=await run({action:'payment',orderId,amount:'500'});
+ snap=await snapshot(admin.id);order=snap.orders.find((o:{id:string})=>o.id===orderId);assert.equal(order.due,'220.00');
+ const collect=await Promise.allSettled([run({action:'payment',orderId,amount:'200'}),run({action:'payment',orderId,amount:'200'})]);assert.equal(collect.filter(x=>x.status==='fulfilled').length,1);
+ await run({action:'reverse',kind:'payment',id:pay,reason:'Test reversal'});
+ await run({action:'reverse',kind:'shipment',id:a,reason:'Test reversal'});
+ assert.equal((await db.batchBalance.aggregate({_sum:{quantity:true}}))._sum.quantity,20);
+ const employee=await db.user.create({data:{email:'warehouse@example.invalid',passwordHash:'unused',role:'BUYER',employeeRole:'WAREHOUSE'}});
+ await assert.rejects(execute(employee.id,randomUUID(),{action:'payment',orderId,amount:'1'}));
+ const workerSnap=await snapshot(employee.id);assert.equal(workerSnap.orders[0].cost,null);assert.equal(workerSnap.receipts.length,0);
+ await db.user.update({where:{id:employee.id},data:{active:false}});await assert.rejects(snapshot(employee.id));
+ // Two distinct orders compete for only twenty units; exactly one may ship twelve.
+ const order2=await run({action:'sale',customerId:customer,lines:[{skuId:sku,quantity:12,price:'60'}]});
+ const line2=await db.salesLine.findFirstOrThrow({where:{orderId:order2}});
+ const race=await Promise.allSettled([run(input),run({action:'ship',orderId:order2,warehouseId:warehouse,lines:[{lineId:line2.id,quantity:12}]})]);assert.equal(race.filter(x=>x.status==='fulfilled').length,1);
+ assert.equal((await db.batchBalance.aggregate({_sum:{quantity:true}}))._sum.quantity,8);
+ await assert.rejects(db.batchBalance.updateMany({data:{quantity:-1}}));
+ // Multi-currency batch lineage, advances and warehouse totals.
+ const skuFx=await run({action:'sku',code:'FX',name:'IGET ONE mint',groupName:'IGET ONE',unit:'支',price:'60'});
+ const receiptInput={action:'receive',supplierId:supplier,warehouseId:warehouse,currency:'CNY',fxToAud:'0.2',date:'2026-09-01',note:'老闆自由備註',batchLabel:'九月人民幣批次',lines:[{skuId:skuFx,quantity:10,price:'100'}]};
+ await assert.rejects(run({...receiptInput,fxToAud:undefined}));await assert.rejects(run({...receiptInput,date:'2026-02-30'}));
+ await run(receiptInput);
+ await run({action:'receive',supplierId:supplier,warehouseId:otherWarehouse,lines:[{skuId:skuFx,quantity:5,price:'25'}]});
+ const fxOrder=await run({action:'sale',customerId:customer,lines:[{skuId:skuFx,quantity:4,price:'50'}]});
+ const fxLine=await db.salesLine.findFirstOrThrow({where:{orderId:fxOrder}});
+ const fxPayment=await run({action:'payment',orderId:fxOrder,amount:'150'});
+ snap=await snapshot(admin.id);assert.equal(snap.orders.find((o:{id:string})=>o.id===fxOrder).advance,'150.00');
+ const fxShipment=await run({action:'ship',orderId:fxOrder,warehouseId:warehouse,lines:[{lineId:fxLine.id,quantity:2}]});
+ snap=await snapshot(admin.id);let fxSale=snap.orders.find((o:{id:string})=>o.id===fxOrder);assert.equal(fxSale.cost,'40.00');assert.equal(fxSale.profit,'60.00');assert.equal(fxSale.advance,'50.00');
+ let report=snap.batches.find((b:{label:string})=>b.label==='九月人民幣批次');assert.equal(report.paid,'100.00');assert.equal(report.note,'老闆自由備註');assert.equal(report.totalCost,'1000.00');
+ let stock=snap.inventory.find((r:{id:string})=>r.id===skuFx);assert.equal(stock.total,13);assert.deepEqual(stock.warehouses.map((w:{quantity:number})=>w.quantity),[8,5]);
+ await run({action:'ship',orderId:fxOrder,warehouseId:otherWarehouse,lines:[{lineId:fxLine.id,quantity:2}]});
+ snap=await snapshot(admin.id);fxSale=snap.orders.find((o:{id:string})=>o.id===fxOrder);assert.equal(fxSale.cost,'90.00');assert.equal(fxSale.profit,'110.00');assert.equal(fxSale.advance,'0.00');assert.equal(fxSale.due,'50.00');
+ const batchPaid=snap.batches.filter((b:{sku:string})=>b.sku==='FX').reduce((v:number,b:{paid:string})=>v+Number(b.paid),0);assert.equal(batchPaid,150);
+ await run({action:'reverse',kind:'shipment',id:fxShipment,reason:'Test payment reallocation'});
+ snap=await snapshot(admin.id);assert.equal(snap.orders.find((o:{id:string})=>o.id===fxOrder).advance,'50.00');assert.equal(snap.batches.find((b:{label:string})=>b.label==='九月人民幣批次').paid,'0.00');
+ await run({action:'reverse',kind:'payment',id:fxPayment,reason:'Test share reversal'});assert.equal(await db.paymentBatchAllocation.count({where:{paymentId:fxPayment}}),0);
+ const secondPrice=await run({action:'sale',customerId:customer,currency:'CNY',fxToAud:'0.2',lines:[{skuId:skuFx,quantity:1,price:'60'}]});
+ snap=await snapshot(admin.id);assert.equal(snap.orders.find((o:{id:string})=>o.id===secondPrice).total,'60.00');assert.equal(snap.customerSummaries.filter((c:{name:string})=>c.name==='Customer').length,2);
+ assert.equal(workerSnap.batches.length,0);
+ console.log('PASS: multi-currency snapshots, manual prices, warehouse totals, batch payment allocation, advances and reversals.');
+ console.log('PASS: FIFO cost/profit; partial payment; same-key concurrency; overship/overpay rejection; cross-warehouse isolation; concurrent stock/payment; reversals; role denial; disabled accounts; DB stock constraint.');
+ }finally{
+ if(!/^erp_test_[a-f0-9]{32}$/.test(schema))throw Error('Invalid cleanup target');
+ await db.$executeRawUnsafe('DROP SCHEMA "'+schema+'" CASCADE');await db.$disconnect();console.log('Isolated integration schema removed.');
+ }
+}
+main().catch(e=>{let message=String(e.stack||e);const u=new URL(process.env.DATABASE_URL!);for(const v of [process.env.DATABASE_URL,u.hostname,u.password,process.env.ADMIN_PASSWORD,process.env.AUTH_SECRET])if(v)message=message.split(v).join('[REDACTED]');console.error(message);process.exitCode=1;});

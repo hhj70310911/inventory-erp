@@ -1,0 +1,534 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  VIP
+  BUYER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  employeeRole   EmployeeRole?
+  active         Boolean           @default(true)
+  receipts       PurchaseReceipt[]
+  shipments      Shipment[]
+  payments       CustomerPayment[]
+  auditEvents    AuditEvent[]
+  id             String            @id @default(cuid())
+  email          String            @unique
+  displayName    String            @default("")
+  adminNote      String            @default("")
+  passwordHash   String
+  role           Role
+  myRatePercent  Float             @default(5)
+  subRatePercent Float?
+  sponsorId      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  sponsor        User?             @relation("AgentTree", fields: [sponsorId], references: [id], onDelete: SetNull)
+  referrals      User[]            @relation("AgentTree")
+  invitesSent    InviteToken[]     @relation("InvitesSent")
+  cartItems      CartItem[]
+  orders         Order[]
+
+  @@index([sponsorId])
+}
+
+model InviteToken {
+  id          String    @id @default(cuid())
+  email       String
+  displayName String    @default("")
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  inviterId   String?
+  sponsorId   String?
+  inviteeRole Role      @default(VIP)
+  createdAt   DateTime  @default(now())
+  inviter     User?     @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: SetNull)
+
+  @@index([inviterId])
+  @@index([sponsorId])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  title       String
+  adminLabel  String           @default("")
+  description String           @db.Text
+  imageUrl    String?
+  priceTwd    Int
+  priceKrw    Int?
+  unitLabel   String           @default("")
+  stock       Int              @default(0)
+  hasVariants Boolean          @default(false)
+  published   Boolean          @default(false)
+  categoryId  String?
+  sourceUrl   String?          @unique
+  sourceTitle String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  category    Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images      ProductImage[]
+  options     ProductOption[]
+  variants    ProductVariant[]
+
+  @@index([categoryId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  url       String
+  sortOrder Int     @default(0)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductOption {
+  id           String               @id @default(cuid())
+  name         String
+  sortOrder    Int                  @default(0)
+  affectsPrice Boolean              @default(false)
+  productId    String
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values       ProductOptionValue[]
+
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id            String                @id @default(cuid())
+  value         String
+  sortOrder     Int                   @default(0)
+  priceTwd      Int?
+  priceKrw      Int?
+  acceptOrders  Boolean               @default(true)
+  optionId      String
+  option        ProductOption         @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  variantValues ProductVariantValue[]
+
+  @@index([optionId])
+}
+
+model ProductVariant {
+  id           String                @id @default(cuid())
+  productId    String
+  priceTwd     Int
+  priceKrw     Int?
+  acceptOrders Boolean               @default(true)
+  product      Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values       ProductVariantValue[]
+  cartItems    CartItem[]
+
+  @@index([productId])
+}
+
+model ProductVariantValue {
+  variantId     String
+  optionValueId String
+  variant       ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  optionValue   ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, optionValueId])
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  userId    String
+  variantId String
+  quantity  Int            @default(1)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, variantId])
+  @@index([userId])
+}
+
+model Order {
+  id                  String      @id @default(cuid())
+  orderNumber         String      @unique
+  userId              String
+  status              OrderStatus @default(PENDING)
+  subtotalTwd         Int         @default(0)
+  serviceFeePercent   Float       @default(5)
+  serviceFeeTwd       Int         @default(0)
+  totalTwd            Int
+  note                String?
+  commissionBreakdown Json?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  user                User        @relation(fields: [userId], references: [id])
+  items               OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String
+  variantId    String?
+  productTitle String
+  specLabel    String  @default("")
+  priceTwd     Int
+  priceKrw     Int?
+  quantity     Int
+  lineTotal    Int
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// ERP foundation: separate stable SKU identities from legacy shop variants.
+model InventorySku {
+  groupName     String           @default("")
+  purchaseLines PurchaseLine[]
+  salesLines    SalesLine[]
+  id            String           @id @default(cuid())
+  code          String           @unique
+  name          String
+  spec          String           @default("")
+  unit          String           @default("件")
+  active        Boolean          @default(true)
+  salePrice     Decimal          @db.Decimal(18, 4)
+  currency      String           @default("AUD") @db.VarChar(3)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  batches       InventoryBatch[]
+}
+
+model Warehouse {
+  receipts  PurchaseReceipt[]
+  shipments Shipment[]
+  movements StockMovement[]
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  active    Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  balances  BatchBalance[]
+}
+
+// Batch cost is fixed when posted; corrections must use reversal transactions.
+model InventoryBatch {
+  label       String               @default("")
+  fxToAud     Decimal?             @db.Decimal(18, 8)
+  unitCostAud Decimal?             @db.Decimal(28, 12)
+  receiptLine ReceiptLine?
+  allocations ShipmentAllocation[]
+  movements   StockMovement[]
+  id          String               @id @default(cuid())
+  batchNo     String               @unique
+  skuId       String
+  unitCost    Decimal              @db.Decimal(18, 4)
+  currency    String               @default("AUD") @db.VarChar(3)
+  receivedAt  DateTime
+  createdAt   DateTime             @default(now())
+  sku         InventorySku         @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  balances    BatchBalance[]
+
+  @@index([skuId, receivedAt, id])
+}
+
+// A batch keeps its identity and cost when transferred between warehouses.
+// Posting services and SQL constraints must enforce nonnegative balances.
+model BatchBalance {
+  batchId     String
+  warehouseId String
+  quantity    Int            @default(0)
+  updatedAt   DateTime       @updatedAt
+  batch       InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@id([batchId, warehouseId])
+  @@index([warehouseId])
+}
+
+enum EmployeeRole {
+  MANAGER
+  WAREHOUSE
+  SALES
+  FINANCE
+}
+
+enum DocumentState {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum StockMovementKind {
+  RECEIPT
+  SHIPMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT
+  REVERSAL
+}
+
+model Supplier {
+  note      String          @default("") @db.Text
+  id        String          @id @default(cuid())
+  code      String          @unique
+  name      String
+  active    Boolean         @default(true)
+  purchases PurchaseOrder[]
+}
+
+model Customer {
+  note     String            @default("") @db.Text
+  id       String            @id @default(cuid())
+  code     String            @unique
+  name     String
+  phone    String            @default("")
+  active   Boolean           @default(true)
+  sales    SalesOrder[]
+  payments CustomerPayment[]
+}
+
+model PurchaseOrder {
+  id         String         @id @default(cuid())
+  number     String         @unique
+  supplierId String
+  currency   String         @default("AUD") @db.VarChar(3)
+  createdAt  DateTime       @default(now())
+  supplier   Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines      PurchaseLine[]
+
+  @@index([supplierId, createdAt])
+}
+
+model PurchaseLine {
+  id         String        @id @default(cuid())
+  purchaseId String
+  skuId      String
+  quantity   Int
+  unitCost   Decimal       @db.Decimal(18, 4)
+  purchase   PurchaseOrder @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  sku        InventorySku  @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  receipts   ReceiptLine[]
+
+  @@index([purchaseId])
+  @@index([skuId])
+}
+
+model PurchaseReceipt {
+  note        String        @default("") @db.Text
+  id          String        @id @default(cuid())
+  number      String        @unique
+  requestKey  String        @unique
+  warehouseId String
+  actorId     String
+  state       DocumentState @default(DRAFT)
+  postedAt    DateTime?
+  createdAt   DateTime      @default(now())
+  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  actor       User          @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  lines       ReceiptLine[]
+
+  @@index([warehouseId, postedAt])
+  @@index([actorId])
+}
+
+model ReceiptLine {
+  id             String          @id @default(cuid())
+  receiptId      String
+  purchaseLineId String
+  batchId        String          @unique
+  quantity       Int
+  receipt        PurchaseReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  purchaseLine   PurchaseLine    @relation(fields: [purchaseLineId], references: [id], onDelete: Restrict)
+  batch          InventoryBatch  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([receiptId])
+  @@index([purchaseLineId])
+}
+
+model SalesOrder {
+  orderedAt  DateTime            @default(now())
+  fxToAud    Decimal?            @db.Decimal(18, 8)
+  note       String              @default("") @db.Text
+  id         String              @id @default(cuid())
+  number     String              @unique
+  customerId String
+  currency   String              @default("AUD") @db.VarChar(3)
+  state      DocumentState       @default(DRAFT)
+  dueAt      DateTime?
+  createdAt  DateTime            @default(now())
+  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  lines      SalesLine[]
+  shipments  Shipment[]
+  payments   PaymentAllocation[]
+
+  @@index([customerId, createdAt])
+}
+
+model SalesLine {
+  id          String               @id @default(cuid())
+  orderId     String
+  skuId       String
+  skuCode     String
+  description String
+  quantity    Int
+  unitPrice   Decimal              @db.Decimal(18, 4)
+  order       SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sku         InventorySku         @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  allocations ShipmentAllocation[]
+
+  @@index([orderId])
+  @@index([skuId])
+}
+
+model Shipment {
+  note        String               @default("") @db.Text
+  id          String               @id @default(cuid())
+  number      String               @unique
+  requestKey  String               @unique
+  orderId     String
+  warehouseId String
+  actorId     String
+  state       DocumentState        @default(DRAFT)
+  postedAt    DateTime?
+  createdAt   DateTime             @default(now())
+  order       SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  actor       User                 @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  allocations ShipmentAllocation[]
+
+  @@index([orderId])
+  @@index([warehouseId, postedAt])
+  @@index([actorId])
+}
+
+model ShipmentAllocation {
+  unitCostAud   Decimal?                 @db.Decimal(28, 12)
+  paymentShares PaymentBatchAllocation[]
+  id            String                   @id @default(cuid())
+  shipmentId    String
+  salesLineId   String
+  batchId       String
+  quantity      Int
+  unitCost      Decimal                  @db.Decimal(18, 4)
+  unitPrice     Decimal                  @db.Decimal(18, 4)
+  shipment      Shipment                 @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  salesLine     SalesLine                @relation(fields: [salesLineId], references: [id], onDelete: Restrict)
+  batch         InventoryBatch           @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentId, salesLineId, batchId])
+  @@index([salesLineId])
+  @@index([batchId])
+}
+
+model CustomerPayment {
+  batchShares PaymentBatchAllocation[]
+  note        String                   @default("") @db.Text
+  id          String                   @id @default(cuid())
+  number      String                   @unique
+  requestKey  String                   @unique
+  customerId  String
+  actorId     String
+  amount      Decimal                  @db.Decimal(18, 4)
+  currency    String                   @default("AUD") @db.VarChar(3)
+  state       DocumentState            @default(DRAFT)
+  receivedAt  DateTime
+  createdAt   DateTime                 @default(now())
+  customer    Customer                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  actor       User                     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
+
+  @@index([customerId, receivedAt])
+  @@index([actorId])
+}
+
+model PaymentAllocation {
+  id        String          @id @default(cuid())
+  paymentId String
+  orderId   String
+  amount    Decimal         @db.Decimal(18, 4)
+  payment   CustomerPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  order     SalesOrder      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, orderId])
+  @@index([orderId])
+}
+
+model StockMovement {
+  id            String            @id @default(cuid())
+  batchId       String
+  warehouseId   String
+  kind          StockMovementKind
+  quantityDelta Int
+  sourceType    String
+  sourceId      String
+  sourceLineId  String
+  eventId       String
+  reversalOfId  String?           @unique
+  createdAt     DateTime          @default(now())
+  batch         InventoryBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  event         AuditEvent        @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  reversalOf    StockMovement?    @relation("MovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy    StockMovement?    @relation("MovementReversal")
+
+  @@unique([sourceType, sourceLineId, warehouseId, batchId, kind])
+  @@index([batchId, warehouseId, createdAt])
+  @@index([eventId])
+}
+
+model AuditEvent {
+  id         String          @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  reason     String?
+  createdAt  DateTime        @default(now())
+  actor      User            @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  movements  StockMovement[]
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+// Materialized allocation of posted receipts to posted shipment lines.
+// Rebuilt transactionally on shipment, receipt or reversal; original payments remain unchanged.
+model PaymentBatchAllocation {
+  paymentId            String
+  shipmentAllocationId String
+  amount               Decimal            @db.Decimal(18, 2)
+  payment              CustomerPayment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  shipmentAllocation   ShipmentAllocation @relation(fields: [shipmentAllocationId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, shipmentAllocationId])
+  @@index([shipmentAllocationId])
+}
