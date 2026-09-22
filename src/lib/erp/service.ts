@@ -1,7 +1,9 @@
+import bcrypt from 'bcryptjs';
 import { Prisma, type User } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../prisma';
+import { passwordSchema } from './password-policy';
 import { allocateFifo } from './fifo';
 import { rebuildPaymentShares } from './payment-shares';
 export class ErpError extends Error {}
@@ -27,7 +29,7 @@ const schema=z.discriminatedUnion('action',[
  z.object({action:z.literal('ship'),orderId:id,date:day,note,warehouseId:id,lines:z.array(z.object({lineId:id,quantity:qty})).min(1).max(50)}),
  z.object({action:z.literal('payment'),orderId:id,amount:cents,date:day,note}),
  z.object({action:z.literal('reverse'),kind:z.enum(['shipment','payment','receipt']),id,reason:text}),
- z.object({action:z.literal('employee'),email:z.string().email().max(160),name:text,password:z.string().min(12).max(72),role:z.enum(['MANAGER','WAREHOUSE','SALES','FINANCE'])}),
+ z.object({action:z.literal('employee'),email:z.string().email().max(160),name:text,password:passwordSchema,role:z.enum(['MANAGER','WAREHOUSE','SALES','FINANCE'])}),
  z.object({action:z.literal('disableEmployee'),id}),
 ]);
 export function can(user:Pick<User,'role'|'employeeRole'|'active'>,action:string) {
@@ -46,7 +48,7 @@ export async function execute(userId:string,requestKey:string,input:unknown){
  const data=parsed.data;
  const fingerprint=createHash('sha256').update(JSON.stringify(data)).digest('hex');
  let passwordHash:string|undefined;
- if(data.action==='employee'){const bcrypt=await import('bcryptjs');passwordHash=await bcrypt.hash(data.password,12);}
+ if(data.action==='employee')passwordHash=await bcrypt.hash(data.password,12);
  for(let attempt=0;attempt<4;attempt++){
  try{return await prisma.$transaction(async tx=>{
   const user=await tx.user.findUnique({where:{id:userId}});

@@ -67,3 +67,11 @@ npm run test:erp:integration：僅限開發或測試庫，建立隨機 erp_test_
 
 ### 首次部署建置修正
 根 layout 明確使用 force-dynamic，避免舊商城頁面在建置期間查詢尚未初始化的正式庫。scripts/test-build-without-database.cjs 以不可連線的假資料庫執行完整 Next.js build，已驗證成功；建置完成後才由既有部署流程執行 migrate deploy。
+
+## 帳號管理
+- 導覽列固定 09「帳號管理」：所有啟用的 ERP 使用者可核對目前密碼後修改自己的密碼。
+- 僅 role=ADMIN 可重設其他啟用員工的密碼，須再次驗證管理員目前密碼。主管與一般員工不能呼叫重設 API，也不能重設其他 ADMIN。
+- 建立員工、初始化管理員、修改與重設密碼統一至少 8 碼；bcrypt UTF-8 上限 72 bytes，超過會拒絕而非截斷。新密碼需再次確認。
+- 密碼修改與稽核紀錄在同一交易；紀錄不含新舊密碼、雜湊或密碼指紋。
+- 登入 token 綁定目前密碼版本；改密碼、重設或停用帳號後，舊登入不能繼續存取 ERP。此版本首次部署時既有登入須重新登入，原密碼不變。
+- scripts/test-account-integration.ts 使用獨立測試 schema 驗證權限與密碼，再啟動 3101 隔離網站跑 scripts/test-account-browser.cjs；不修改正式庫帳號。

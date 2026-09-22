@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { isSameOrigin } from '../src/lib/erp/request-origin';
+const local=(origin:string)=>new Request('http://localhost:3101/api/erp/password',{headers:{host:'127.0.0.1:3101',origin,'x-forwarded-proto':'http'}});
+assert.equal(isSameOrigin(local('http://127.0.0.1:3101')),true);
+assert.equal(isSameOrigin(local('https://untrusted.example')),false);
+assert.equal(isSameOrigin(local('http://127.0.0.1:3102')),false);
+assert.equal(isSameOrigin(local('https://127.0.0.1:3101')),false);
+assert.equal(isSameOrigin(local('null')),false);
+assert.equal(isSameOrigin(new Request('http://localhost/api/erp/password')),false);
+assert.equal(isSameOrigin(new Request('http://internal/api/erp/password',{headers:{host:'inventory-erp-sigma.vercel.app',origin:'https://inventory-erp-sigma.vercel.app','x-forwarded-proto':'https'}})),true);
+console.log('PASS: local and forwarded production origins, rejected external/missing origins, scheme and port mismatches.');

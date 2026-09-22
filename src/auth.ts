@@ -1,3 +1,4 @@
+import { credentialStamp, matchesCredential } from '@/lib/erp/credential-session';
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -32,6 +33,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           email: user.email,
           role: user.role as Role,
+          credentialStamp: credentialStamp(user.passwordHash),
         };
       },
     }),
@@ -43,7 +45,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.email = user.email;
         token.role = user.role;
+        token.credentialStamp = user.credentialStamp;
       }
+      if (typeof token.id!=="string"||!token.id) return null;
+      const current=await prisma.user.findUnique({where:{id:token.id},select:{passwordHash:true,active:true,role:true,employeeRole:true}});
+      if(!current?.active||(current.role!=="ADMIN"&&!current.employeeRole)||!matchesCredential(token.credentialStamp,current.passwordHash))return null;
+      token.role=current.role;
       return token;
     },
     async session({ session, token }) {
