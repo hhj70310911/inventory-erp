@@ -20,6 +20,7 @@ const businessDate=(v?:string)=>v?new Date(v+'T00:00:00Z'):new Date();
 function exchange(c:string,v?:string){if(c==='AUD')return new Prisma.Decimal(1);if(!v||new Prisma.Decimal(v).lte(0))throw new ErpError('人民幣交易必須填寫大於零的匯率（1 CNY 等於多少 AUD）');return new Prisma.Decimal(v);}
 const line=z.object({skuId:id,quantity:qty,price:money});
 const schema=z.discriminatedUnion('action',[
+ z.object({action:z.literal('adjustBatchCost'),batchId:id,expectedVersion:z.coerce.number().int().nonnegative(),newCost:money,reason:text}),
  z.object({action:z.literal('sku'),code:text,name:text,price:cents,groupName:z.string().trim().max(160).default(''),unit:z.string().trim().min(1).max(20).default('件')}),
  z.object({action:z.literal('warehouse'),code:text,name:text}),
  z.object({action:z.literal('customer'),code:text,name:text,note}),
@@ -55,7 +56,7 @@ export async function execute(userId:string,requestKey:string,input:unknown){
   if(!user||!can(user,data.action))throw new ErpError('沒有操作權限');
   const previous=await tx.auditEvent.findUnique({where:{id:requestKey}});
   if(previous){const meta=previous.after as {fingerprint?:string};if(previous.actorId!==userId||meta?.fingerprint!==fingerprint)throw new ErpError('重複請求內容不一致');return previous.entityId;}
-  const event=await tx.auditEvent.create({data:{id:requestKey,actorId:userId,action:data.action,entityType:data.action,entityId:'pending',after:{fingerprint},reason:data.action==='reverse'?data.reason:null}});
+  const event=await tx.auditEvent.create({data:{id:requestKey,actorId:userId,action:data.action,entityType:data.action,entityId:'pending',after:{fingerprint},reason:(data.action==='reverse'||data.action==='adjustBatchCost')?data.reason:null}});
   let result='';
   if(data.action==='sku'){result=(await tx.inventorySku.create({data:{code:data.code,name:data.name,salePrice:data.price,groupName:data.groupName,unit:data.unit}})).id;}
   if(data.action==='warehouse'||data.action==='customer'||data.action==='supplier'){
@@ -87,7 +88,23 @@ export async function execute(userId:string,requestKey:string,input:unknown){
     }
    }
   }
+  if(data.action==='adjustBatchCost'){
+   const batch=await tx.inventoryBatch.findUnique({where:{id:data.batchId},include:{receiptLine:{include:{receipt:true}},balances:{include:{warehouse:true}}}});
+   if(!batch||batch.receiptLine?.receipt.state!=='POSTED')throw new ErpError('找不到有效入庫批次');
+   if(batch.costVersion!==data.expectedVersion)throw new ErpError('批次成本已被更新，請重新整理後再操作');
+   const quantity=batch.balances.reduce((v,b)=>v+b.quantity,0);
+   if(quantity<=0)throw new ErpError('此批已無剩餘庫存，不能調整成本');
+   if(!batch.fxToAud||!batch.unitCostAud)throw new ErpError('批次缺少原始匯率，請先補齊');
+   const newCost=decimal(data.newCost),newCostAud=newCost.mul(batch.fxToAud);
+   if(newCost.eq(batch.unitCost))throw new ErpError('新成本與目前成本相同');
+   const version=batch.costVersion+1;
+   const changed=await tx.inventoryBatch.updateMany({where:{id:batch.id,costVersion:data.expectedVersion},data:{unitCost:newCost,unitCostAud:newCostAud,costVersion:version}});
+   if(changed.count!==1)throw new ErpError('批次成本已變動，請重新整理');
+   await tx.batchCostAdjustment.create({data:{batchId:batch.id,eventId:event.id,version,oldCost:batch.unitCost,newCost,oldCostAud:batch.unitCostAud,newCostAud,quantity,warehouses:batch.balances.filter(b=>b.quantity>0).map(b=>({id:b.warehouseId,name:b.warehouse.name,quantity:b.quantity}))}});
+   result=batch.id;
+  }
   if(data.action==='ship'){
+
    if(new Set(data.lines.map(l=>l.lineId)).size!==data.lines.length)throw new ErpError('出貨明細重複');
    const order=await tx.salesOrder.findUnique({where:{id:data.orderId},include:{lines:{include:{allocations:{where:{shipment:{state:'POSTED'}}}}}}});
    if(!order||order.state!=='POSTED')throw new ErpError('找不到有效訂單');
@@ -103,7 +120,7 @@ export async function execute(userId:string,requestKey:string,input:unknown){
      if(updated.count!==1)throw new ErpError('庫存已變動，請重新操作');
      const source=balances.find(b=>b.batchId===a.batchId)!.batch;
      if(!source.unitCostAud||!order.fxToAud)throw new ErpError('舊批次或訂單缺少澳幣換算成本，請先補齊資料');
-     const row=await tx.shipmentAllocation.create({data:{shipmentId:shipment.id,salesLineId:ol.id,batchId:a.batchId,quantity:a.quantity,unitCost:a.unitCost,unitCostAud:source.unitCostAud,unitPrice:ol.unitPrice}});
+     const row=await tx.shipmentAllocation.create({data:{shipmentId:shipment.id,salesLineId:ol.id,batchId:a.batchId,quantity:a.quantity,costVersion:source.costVersion,unitCost:a.unitCost,unitCostAud:source.unitCostAud,unitPrice:ol.unitPrice}});
      await tx.stockMovement.create({data:{batchId:a.batchId,warehouseId:data.warehouseId,kind:'SHIPMENT',quantityDelta:-a.quantity,sourceType:'shipment',sourceId:shipment.id,sourceLineId:row.id,eventId:event.id}});
     }
    }
@@ -128,6 +145,7 @@ export async function execute(userId:string,requestKey:string,input:unknown){
     if(!doc||doc.state!=='POSTED')throw new ErpError('單據不存在或已沖銷');
     const movements=await tx.stockMovement.findMany({where:{sourceType:data.kind,sourceId:doc.id,kind:data.kind==='shipment'?'SHIPMENT':'RECEIPT'}});
     for(const m of movements){
+     if(data.kind==='receipt'&&await tx.batchCostAdjustment.count({where:{batchId:m.batchId}}))throw new ErpError('此批已有成本調整紀錄，不能沖銷入庫');
      if(data.kind==='receipt'&&await tx.stockMovement.count({where:{batchId:m.batchId,kind:{not:'RECEIPT'}}}))throw new ErpError('此批次已有後續異動，不能沖銷入庫');
      const changed=await tx.batchBalance.updateMany({where:{batchId:m.batchId,warehouseId:m.warehouseId,...(m.quantityDelta>0?{quantity:{gte:m.quantityDelta}}:{})},data:{quantity:{decrement:m.quantityDelta}}});
      if(changed.count!==1)throw new ErpError('剩餘庫存不足以沖銷');

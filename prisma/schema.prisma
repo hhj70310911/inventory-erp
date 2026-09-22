@@ -237,8 +237,10 @@ model Warehouse {
   balances  BatchBalance[]
 }
 
-// Batch cost is fixed when posted; corrections must use reversal transactions.
+// Current remaining-stock cost; purchase lines and posted shipment costs stay immutable.
 model InventoryBatch {
+  costVersion Int @default(0)
+  costAdjustments BatchCostAdjustment[]
   label       String               @default("")
   fxToAud     Decimal?             @db.Decimal(18, 8)
   unitCostAud Decimal?             @db.Decimal(28, 12)
@@ -429,6 +431,7 @@ model Shipment {
 }
 
 model ShipmentAllocation {
+  costVersion Int @default(0)
   unitCostAud   Decimal?                 @db.Decimal(28, 12)
   paymentShares PaymentBatchAllocation[]
   id            String                   @id @default(cuid())
@@ -504,6 +507,7 @@ model StockMovement {
 }
 
 model AuditEvent {
+  costAdjustment BatchCostAdjustment?
   id         String          @id @default(cuid())
   actorId    String
   action     String
@@ -531,4 +535,22 @@ model PaymentBatchAllocation {
 
   @@id([paymentId, shipmentAllocationId])
   @@index([shipmentAllocationId])
+}
+
+// Append-only revisions. Warehouse quantities are captured at the moment of adjustment.
+model BatchCostAdjustment {
+  id String @id @default(cuid())
+  batchId String
+  eventId String @unique
+  version Int
+  oldCost Decimal @db.Decimal(18, 4)
+  newCost Decimal @db.Decimal(18, 4)
+  oldCostAud Decimal @db.Decimal(28, 12)
+  newCostAud Decimal @db.Decimal(28, 12)
+  quantity Int
+  warehouses Json
+  createdAt DateTime @default(now())
+  batch InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  event AuditEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  @@unique([batchId, version])
 }
