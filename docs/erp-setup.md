@@ -64,3 +64,6 @@ npm run test:erp:integration：僅限開發或測試庫，建立隨機 erp_test_
 5. 建置流程先驗證環境，再 generate、next build，最後 migrate deploy；migration 失敗會阻擋這次部署。資料庫更新不可依靠網站 rollback 還原，往後 migration 需保持與上一版程式相容。
 6. 正式库首次 migration 完成後，在可信任的本機以正式庫環境執行 db:seed 建立管理員；不在每次部署自動 seed，也不將 ADMIN_PASSWORD 放进 Git。
 7. 部署後驗證登入、SKU／倉庫、入庫／出貨／收款及權限，再開始正式使用。
+
+### 首次部署建置修正
+根 layout 明確使用 force-dynamic，避免舊商城頁面在建置期間查詢尚未初始化的正式庫。scripts/test-build-without-database.cjs 以不可連線的假資料庫執行完整 Next.js build，已驗證成功；建置完成後才由既有部署流程執行 migrate deploy。
