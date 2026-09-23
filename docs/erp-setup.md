@@ -88,11 +88,11 @@ npm run test:erp:integration：僅限開發或測試庫，建立隨機 erp_test_
 - 新遷移僅新增成本版本欄位（既有資料預設版本 0）及調整歷史表，沒有改寫既有成本或庫存。部署仍由 Vercel 執行 migrate deploy。
 - 驗證：`node --import tsx scripts/test-batch-cost-integration.ts`，UI 驗證：先 build，再 `node --import tsx scripts/test-batch-cost-ui.ts`。僅使用 development/test 的隨機獨立 schema，結束後移除。
 
-## 商品管理（測試版待驗收）
+## 商品管理（已驗收並核准部署）
 - 管理員及主管在商品目錄可編輯名稱、系列、單位、參考售價，SKU 編碼不變。單位編輯只更正文字，不進行數量換算。
 - 刪除只允許沒有任何批次、採購明細、銷售明細的商品；含已沖銷歷史者不可刪除。AuditEvent 保存刪除前商品資料。
 - 停用必須所有倉庫零庫存且 POSTED 訂單沒有待出數量。新進貨／銷售選單及庫存彙總排除停用品，但歷史報表保留。
 - 已停用清單可重新啟用。沖銷出貨回庫前要求商品為啟用，避免停用品出現新庫存及待出貨量。
 - updatedAt 驗證避免覆蓋其他人的編輯；操作以 Serializable 交易、防重 requestKey 及後端權限保護。
 - 測試：先 build，再 node --import tsx scripts/test-product-integration.ts，使用隔離 schema 驗證並清理。
-- 本次不需資料庫遷移；功能分支 codex/product-management，不推送 main 或部署正式版。
+- 本次不需資料庫遷移；商品管理已經測試版驗收，使用者核准合併 main 並部署正式版。
