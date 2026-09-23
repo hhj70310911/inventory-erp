@@ -20,6 +20,10 @@ const businessDate=(v?:string)=>v?new Date(v+'T00:00:00Z'):new Date();
 function exchange(c:string,v?:string){if(c==='AUD')return new Prisma.Decimal(1);if(!v||new Prisma.Decimal(v).lte(0))throw new ErpError('人民幣交易必須填寫大於零的匯率（1 CNY 等於多少 AUD）');return new Prisma.Decimal(v);}
 const line=z.object({skuId:id,quantity:qty,price:money});
 const schema=z.discriminatedUnion('action',[
+ z.object({action:z.literal('editSku'),id,expectedUpdatedAt:z.string().datetime(),name:text,groupName:z.string().trim().max(160),unit:z.string().trim().min(1).max(20),price:cents}),
+ z.object({action:z.literal('deleteSku'),id,expectedUpdatedAt:z.string().datetime()}),
+ z.object({action:z.literal('disableSku'),id,expectedUpdatedAt:z.string().datetime()}),
+ z.object({action:z.literal('enableSku'),id,expectedUpdatedAt:z.string().datetime()}),
  z.object({action:z.literal('adjustBatchCost'),batchId:id,expectedVersion:z.coerce.number().int().nonnegative(),newCost:money,reason:text}),
  z.object({action:z.literal('sku'),code:text,name:text,price:cents,groupName:z.string().trim().max(160).default(''),unit:z.string().trim().min(1).max(20).default('件')}),
  z.object({action:z.literal('warehouse'),code:text,name:text}),
@@ -59,6 +63,28 @@ export async function execute(userId:string,requestKey:string,input:unknown){
   const event=await tx.auditEvent.create({data:{id:requestKey,actorId:userId,action:data.action,entityType:data.action,entityId:'pending',after:{fingerprint},reason:(data.action==='reverse'||data.action==='adjustBatchCost')?data.reason:null}});
   let result='';
   if(data.action==='sku'){result=(await tx.inventorySku.create({data:{code:data.code,name:data.name,salePrice:data.price,groupName:data.groupName,unit:data.unit}})).id;}
+  if(data.action==='editSku'||data.action==='deleteSku'||data.action==='disableSku'||data.action==='enableSku'){
+   const sku=await tx.inventorySku.findUnique({where:{id:data.id},include:{_count:{select:{batches:true,purchaseLines:true,salesLines:true}}}});
+   if(!sku)throw new ErpError('商品不存在或已刪除，請重新整理');
+   if(sku.updatedAt.toISOString()!==data.expectedUpdatedAt)throw new ErpError('商品已被更新，請重新整理後再操作');
+   const before={code:sku.code,name:sku.name,groupName:sku.groupName,unit:sku.unit,price:sku.salePrice.toString(),active:sku.active};
+   await tx.auditEvent.update({where:{id:event.id},data:{before}});
+   if(data.action==='deleteSku'){
+    if(sku._count.batches||sku._count.purchaseLines||sku._count.salesLines)throw new ErpError('商品已有進貨或訂單紀錄，不能刪除；請改用停用');
+    await tx.inventorySku.delete({where:{id:sku.id}});
+    await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,deleted:true,code:sku.code,name:sku.name}}});
+   }else{
+    if(data.action==='disableSku'){
+     if(await tx.batchBalance.count({where:{batch:{skuId:sku.id},quantity:{gt:0}}}))throw new ErpError('商品仍有剩餘庫存，不能停用');
+     const lines=await tx.salesLine.findMany({where:{skuId:sku.id,order:{state:'POSTED'}},include:{allocations:{where:{shipment:{state:'POSTED'}}}}});
+     if(lines.some(l=>l.quantity>l.allocations.reduce((n,a)=>n+a.quantity,0)))throw new ErpError('商品仍有待出貨訂單，不能停用');
+    }
+    const changes=data.action==='editSku'?{name:data.name,groupName:data.groupName,unit:data.unit,salePrice:data.price}:{active:data.action==='enableSku'};
+    const updated=await tx.inventorySku.update({where:{id:sku.id},data:changes});
+    await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,code:updated.code,name:updated.name,groupName:updated.groupName,unit:updated.unit,price:updated.salePrice.toString(),active:updated.active}}});
+   }
+   result=sku.id;
+  }
   if(data.action==='warehouse'||data.action==='customer'||data.action==='supplier'){
    const v={code:data.code,name:data.name,...(data.action==='warehouse'?{}:{note:data.note})};
    result=data.action==='warehouse'?(await tx.warehouse.create({data:v})).id:data.action==='customer'?(await tx.customer.create({data:v})).id:(await tx.supplier.create({data:v})).id;
@@ -145,6 +171,10 @@ export async function execute(userId:string,requestKey:string,input:unknown){
     if(!doc||doc.state!=='POSTED')throw new ErpError('單據不存在或已沖銷');
     const movements=await tx.stockMovement.findMany({where:{sourceType:data.kind,sourceId:doc.id,kind:data.kind==='shipment'?'SHIPMENT':'RECEIPT'}});
     for(const m of movements){
+     if(data.kind==='shipment'){
+      const batch=await tx.inventoryBatch.findUniqueOrThrow({where:{id:m.batchId},include:{sku:true}});
+      if(!batch.sku.active)throw new ErpError('商品已停用，請先重新啟用商品再沖銷出貨');
+     }
      if(data.kind==='receipt'&&await tx.batchCostAdjustment.count({where:{batchId:m.batchId}}))throw new ErpError('此批已有成本調整紀錄，不能沖銷入庫');
      if(data.kind==='receipt'&&await tx.stockMovement.count({where:{batchId:m.batchId,kind:{not:'RECEIPT'}}}))throw new ErpError('此批次已有後續異動，不能沖銷入庫');
      const changed=await tx.batchBalance.updateMany({where:{batchId:m.batchId,warehouseId:m.warehouseId,...(m.quantityDelta>0?{quantity:{gte:m.quantityDelta}}:{})},data:{quantity:{decrement:m.quantityDelta}}});
