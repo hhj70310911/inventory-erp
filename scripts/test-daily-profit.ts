@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {Prisma} from '@prisma/client';
+import {dailyProfit} from '../src/lib/erp/daily-profit';
+const D=(s:string)=>new Prisma.Decimal(s);
+const date=(s:string)=>new Date(s+'T00:00:00Z');
+const shipment=(day:string,cost:string|null='40',state='POSTED')=>({postedAt:date(day),state,allocations:[{quantity:3,unitPrice:D('60.10'),unitCostAud:cost===null?null:D(cost)}]});
+const order={state:'POSTED',orderedAt:date('2026-09-20'),fxToAud:D('1'),shipments:[shipment('2026-09-21'),shipment('2026-09-22','45'),shipment('2026-09-21','99','REVERSED')]};
+let result=dailyProfit([order]);
+assert.equal(result[0].orders,1);assert.equal(result[0].profit,'0.00');assert.equal(result[0].margin,null);
+assert.equal(result[1].revenue,'180.30');assert.equal(result[1].cost,'120.00');assert.equal(result[1].profit,'60.30');assert.equal(result[1].shipments,1);
+assert.equal(result[2].profit,'45.30');
+result=dailyProfit([{...order,fxToAud:D('0.2'),shipments:[shipment('2026-09-21','15')]}]);assert.equal(result[1].revenue,'36.06');assert.equal(result[1].profit,'-8.94');assert.equal(result[1].margin,'-24.79');
+result=dailyProfit([{...order,fxToAud:null,shipments:[shipment('2026-09-21')]}]);assert.equal(result[1].profit,null);assert.equal(result[1].revenue,null);assert.equal(result[1].cost,'120.00');assert.equal(result[1].incomplete,1);
+result=dailyProfit([{...order,shipments:[shipment('2026-09-21',null)]}]);assert.equal(result[1].profit,null);assert.equal(result[1].cost,null);assert.equal(result[1].revenue,'180.30');
+assert.deepEqual(dailyProfit([{...order,state:'REVERSED'}]),[]);assert.deepEqual(dailyProfit([]),[]);
+console.log('PASS: business dates, partial shipments, locked costs, reversals, decimal totals, CNY conversion, losses and missing values.');

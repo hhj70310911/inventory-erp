@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 module.exports=async function testWorkspace(page){
  await page.setViewportSize({width:1440,height:1000});
+ const snap=await (await page.request.get('http://127.0.0.1:3105/api/erp')).json();const profitable=snap.dailyProfit.find(d=>d.shipments>0);assert.equal(profitable.profit,'139.99');await page.getByLabel('統計日期',{exact:true}).fill(profitable.date);assert.ok((await page.locator('.daily-metrics').first().innerText()).includes('139.99'));await page.getByLabel('統計日期',{exact:true}).fill('2000-01-01');assert.ok((await page.locator('.daily-metrics').first().innerText()).includes('0.00'));await page.getByLabel('統計日期',{exact:true}).fill(profitable.date);
  await page.screenshot({path:'artifacts/erp-overview-desktop.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:/待出貨訂單/}).click();
  await page.getByRole('group',{name:'訂單狀態篩選'}).getByRole('button',{name:/部分出貨/}).click();
@@ -39,7 +40,7 @@ module.exports=async function testWorkspace(page){
  assert.equal(await page.getByRole('button',{name:/客戶未收款/}).count(),0);
  await page.locator('nav').getByRole('button',{name:/銷售與出貨/}).click();assert.equal(await page.getByRole('button',{name:/新增銷售單/}).count(),0);assert.equal(await page.getByRole('group',{name:'訂單狀態篩選'}).getByRole('button',{name:/未收清/}).count(),0);
  await page.locator('.order-card summary').first().click();assert.equal(await page.locator('.order-financials').count(),0);
- mocked={...snapshot,orders:[]};await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();await page.getByRole('heading',{name:'準備好第一筆交易'}).waitFor();
+ mocked={...snapshot,orders:[]};await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();await page.getByRole('heading',{name:'尚無銷售訂單'}).waitFor();
  await page.unroute('**/api/erp');await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();
  await page.setViewportSize({width:1280,height:1000});await page.locator('nav').getByRole('button',{name:/銷售與出貨/}).click();
  console.log('PASS: dashboard links, status/search filters, sale and ship request payloads, drawer completion/escape and mobile widths. Posting is mocked; no financial writes.');
