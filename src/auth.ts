@@ -48,9 +48,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.credentialStamp = user.credentialStamp;
       }
       if (typeof token.id!=="string"||!token.id) return null;
-      const current=await prisma.user.findUnique({where:{id:token.id},select:{passwordHash:true,active:true,role:true,employeeRole:true}});
+      const current=await prisma.user.findUnique({where:{id:token.id},select:{passwordHash:true,active:true,role:true,employeeRole:true,email:true}});
       if(!current?.active||(current.role!=="ADMIN"&&!current.employeeRole)||!matchesCredential(token.credentialStamp,current.passwordHash))return null;
       token.role=current.role;
+      token.email=current.email;
       return token;
     },
     async session({ session, token }) {

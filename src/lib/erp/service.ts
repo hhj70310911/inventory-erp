@@ -3,6 +3,7 @@ import { Prisma, type User } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../prisma';
+import { employeeEditError } from './employee-policy';
 import { passwordSchema } from './password-policy';
 import { allocateFifo } from './fifo';
 import { rebuildPaymentShares } from './payment-shares';
@@ -34,8 +35,9 @@ const schema=z.discriminatedUnion('action',[
  z.object({action:z.literal('ship'),orderId:id,date:day,note,warehouseId:id,lines:z.array(z.object({lineId:id,quantity:qty})).min(1).max(50)}),
  z.object({action:z.literal('payment'),orderId:id,amount:cents,date:day,note}),
  z.object({action:z.literal('reverse'),kind:z.enum(['shipment','payment','receipt']),id,reason:text}),
- z.object({action:z.literal('employee'),email:z.string().email().max(160),name:text,password:passwordSchema,role:z.enum(['MANAGER','WAREHOUSE','SALES','FINANCE'])}),
+ z.object({action:z.literal('employee'),email:z.string().trim().email().max(160),name:text,password:passwordSchema,role:z.enum(['MANAGER','WAREHOUSE','SALES','FINANCE'])}),
  z.object({action:z.literal('disableEmployee'),id}),
+ z.object({action:z.literal('editEmployee'),id,expectedUpdatedAt:z.string().datetime(),email:z.string().trim().email().max(160),name:text,role:z.enum(['ADMIN','MANAGER','WAREHOUSE','SALES','FINANCE']),active:z.boolean()}),
 ]);
 export function can(user:Pick<User,'role'|'employeeRole'|'active'>,action:string) {
  if(!user.active)return false;
@@ -89,11 +91,26 @@ export async function execute(userId:string,requestKey:string,input:unknown){
    const v={code:data.code,name:data.name,...(data.action==='warehouse'?{}:{note:data.note})};
    result=data.action==='warehouse'?(await tx.warehouse.create({data:v})).id:data.action==='customer'?(await tx.customer.create({data:v})).id:(await tx.supplier.create({data:v})).id;
   }
-  if(data.action==='employee')result=(await tx.user.create({data:{email:data.email.toLowerCase(),displayName:data.name,passwordHash:passwordHash!,employeeRole:data.role,role:'BUYER'}})).id;
-  if(data.action==='disableEmployee'){
+  if(data.action==='employee'){
+   if(user.role!=='ADMIN'&&data.role==='MANAGER')throw new ErpError('只有系統管理員可以指派主管');
+   result=(await tx.user.create({data:{email:data.email.toLowerCase(),displayName:data.name,passwordHash:passwordHash!,employeeRole:data.role,role:'BUYER'}})).id;
+   await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,email:data.email.toLowerCase(),displayName:data.name,employeeRole:data.role,active:true}}});
+  }
+  if(data.action==='editEmployee'||data.action==='disableEmployee'){
    const target=await tx.user.findUnique({where:{id:data.id}});
-   if(!target||target.id===userId||target.role==='ADMIN')throw new ErpError('不能停用自己或系統管理員');
-   result=(await tx.user.update({where:{id:data.id},data:{active:false}})).id;
+   if(!target)throw new ErpError('員工不存在，請重新整理');
+   const next=data.action==='editEmployee'?{role:data.role,active:data.active}:{role:target.role==='ADMIN'?'ADMIN':target.employeeRole||'',active:false};
+   const policyError=employeeEditError(user,target,next);if(policyError)throw new ErpError(policyError);
+   if(data.action==='editEmployee'&&target.updatedAt.toISOString()!==data.expectedUpdatedAt)throw new ErpError('員工資料已被更新，請重新整理後再編輯');
+   const before={email:target.email,displayName:target.displayName,employeeRole:target.employeeRole,role:target.role,active:target.active};
+   const changes=data.action==='editEmployee'?{email:data.email.toLowerCase(),displayName:data.name,employeeRole:target.role==='ADMIN'?target.employeeRole:data.role as 'MANAGER'|'WAREHOUSE'|'SALES'|'FINANCE',active:data.active}:{active:false};
+   if(data.action==='editEmployee'&&await tx.user.findFirst({where:{email:{equals:data.email.toLowerCase(),mode:'insensitive'},id:{not:target.id}},select:{id:true}}))throw new ErpError('Email 已被其他帳號使用');
+   const updated=await tx.user.update({where:{id:target.id},data:changes});
+   const after={email:updated.email,displayName:updated.displayName,employeeRole:updated.employeeRole,role:updated.role,active:updated.active};
+   const fields=Object.keys(before).filter(k=>before[k as keyof typeof before]!==after[k as keyof typeof after]);
+   const labels:Record<string,string>={email:'Email',displayName:'姓名',employeeRole:'角色',role:'系統角色',active:'啟用狀態'};
+   await tx.auditEvent.update({where:{id:event.id},data:{before,after:{fingerprint,...after},reason:fields.length?'修改欄位：'+fields.map(k=>labels[k]).join('、'):'資料未變更'}});
+   result=target.id;
   }
   if(data.action==='receive'||data.action==='sale'){
    const rate=exchange(data.currency,data.fxToAud);

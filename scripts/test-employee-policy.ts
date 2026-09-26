@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {employeeEditError} from '../src/lib/erp/employee-policy';
+const admin={id:'a',role:'ADMIN',employeeRole:null,active:true};
+const manager={id:'m',role:'BUYER',employeeRole:'MANAGER',active:true};
+const worker={id:'w',role:'BUYER',employeeRole:'WAREHOUSE',active:true};
+assert.equal(employeeEditError(admin,worker,{role:'MANAGER',active:false}),null);
+assert.equal(employeeEditError(manager,worker,{role:'FINANCE',active:true}),null);
+assert.ok(employeeEditError(manager,worker,{role:'MANAGER',active:true}));
+assert.ok(employeeEditError(manager,admin,{role:'ADMIN',active:true}));
+assert.ok(employeeEditError(manager,{...manager,id:'other'},{role:'MANAGER',active:true}));
+assert.ok(employeeEditError(worker,worker,{role:'WAREHOUSE',active:true}));
+assert.ok(employeeEditError(admin,admin,{role:'ADMIN',active:false}));
+assert.ok(employeeEditError(manager,manager,{role:'FINANCE',active:true}));
+assert.ok(employeeEditError(admin,worker,{role:'ADMIN',active:true}));
+assert.equal(employeeEditError(manager,manager,{role:'MANAGER',active:true}),null);
+assert.ok(employeeEditError({...admin,active:false},worker,{role:'SALES',active:true}));
+console.log('PASS: admin, manager, self protection, peer protection and privilege escalation checks.');
