@@ -105,3 +105,7 @@ npm run test:erp:integration：僅限開發或測試庫，建立隨機 erp_test_
 - 金額由伺服器 Decimal 計算，前端只排版。單位採商品目前設定；圖片是開啟預覽時的資料，並非永久保存的歷史檔案。
 - Canvas 產生本機 PNG，不儲存圖片至資料庫；長單分頁、不同單位分開合計，已沖銷出貨明確標記。生成時間標示台灣時區。
 - 建置後執行 node --import tsx scripts/test-document-integration.ts，以隔離 schema 驗證資料與實際 PNG。未部署正式站。
+
+## 顯示時區
+預設依裝置時區顯示實際時間，包含澳洲夏令時間。09 帳號管理可指定時區，設定保存在目前瀏覽器，不跨裝置同步。圖片與操作紀錄使用相同設定並顯示時區；產生時間仍取伺服器時間。手動填寫的業務日期不做時區轉換；新增表單預設日期依顯示時區計算。
+驗證：`npx tsx scripts/test-time-zone.ts` 與單據整合測試（包含 Melbourne 自動時區、Perth 手動選擇及重新整理保留）。

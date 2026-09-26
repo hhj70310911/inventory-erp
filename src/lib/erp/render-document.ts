@@ -1,6 +1,7 @@
+import {formatInstant} from './time-zone';
 import type {OrderDocument} from './document-types';
 type Command={text:string;x:number;y:number;size:number;bold:boolean;align:CanvasTextAlign};
-export async function renderDocument(doc:OrderDocument,company:string,includeNote:boolean):Promise<Blob[]>{
+export async function renderDocument(doc:OrderDocument,company:string,includeNote:boolean,timeZone:string):Promise<Blob[]>{
  await document.fonts.ready;
  const width=800,margin=48,maxHeight=4200,font='"Microsoft JhengHei", "PingFang TC", Arial, sans-serif';
  const measure=document.createElement('canvas').getContext('2d');if(!measure)throw Error('瀏覽器不支援圖片產生');
@@ -17,6 +18,6 @@ export async function renderDocument(doc:OrderDocument,company:string,includeNot
  rule();const units=new Map<string,number>();for(const row of doc.rows)units.set(row.unit,(units.get(row.unit)||0)+row.quantity);add('數量合計：'+[...units].map(([u,n])=>n+' '+u).join(' ／ '));add((doc.kind==='order'?'訂單總額：':'本次出貨金額：')+doc.currency+' '+doc.total,28,true);
  if(doc.paid!==null&&doc.due!==null){if(doc.kind==='shipment')add('以下收款為整張訂單累計，非本次出貨收款',19);add('整張訂單已收：'+doc.currency+' '+doc.paid);add('整張訂單未收：'+doc.currency+' '+doc.due);}
  if(includeNote&&doc.note){rule();add('備註：',24,true);add(doc.note,22);}
- rule();add('感謝您的惠顧',24);add('產生時間（台灣）：'+new Date(doc.generatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}),18);pages.push({commands,height:y+75});
+ rule();add('感謝您的惠顧',24);add('產生時間（'+timeZone+'）：'+formatInstant(doc.generatedAt,timeZone),18);pages.push({commands,height:y+75});
  return Promise.all(pages.map(async(page,index)=>{const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=Math.ceil(page.height*1.5);const ctx=canvas.getContext('2d');if(!ctx)throw Error('圖片產生失敗');ctx.scale(1.5,1.5);ctx.fillStyle='#fff';ctx.fillRect(0,0,width,page.height);ctx.fillStyle='#111';ctx.textBaseline='top';for(const c of page.commands){ctx.font=`${c.bold?'bold ':''}${c.size}px ${font}`;ctx.textAlign=c.align;ctx.fillText(c.text,c.x,c.y);}ctx.font=`18px ${font}`;ctx.textAlign='center';ctx.fillText(`第 ${index+1} / ${pages.length} 頁`,width/2,page.height-40);return new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG 產生失敗')),'image/png'));}));
 }
