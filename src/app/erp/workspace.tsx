@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Overview from './overview';
+import WorkspaceLoading from './workspace-loading';
 import SalesList from './sales-list';
 import ActionDrawer from './action-drawer';
 import ProductManagement, {type Product} from './product-management';
@@ -40,7 +41,7 @@ function WorkspaceContent(){
  function reverse(kind:string,id:string){const reason=window.prompt('請輸入沖銷原因。沖銷會保留原單據及紀錄。');if(reason?.trim())void send({action:'reverse',kind,id,reason:reason.trim()});}
  const allowed=(a:string)=>data?.user.permissions.includes(a);
  const button=(title:string)=><button className="primary" disabled={busy}>{busy?'處理中…':title}</button>;
- if(!data)return <main className="erp-loading"><h1>庫務 ERP</h1><p role="alert">{error||'正在讀取工作區…'}</p>{error&&<button onClick={()=>{setError('');void load().catch(e=>setError(e.message));}}>重新讀取</button>}<a href="/login">返回登入</a></main>;
+ if(!data)return <WorkspaceLoading error={error} retry={()=>{setError('');void load().catch(e=>setError(e.message));}}/>;
  const stock=data.balances.filter(b=>[b.sku,b.name,b.warehouse,b.batch].join(' ').toLowerCase().includes(search.toLowerCase()));
  const orders=data.orders.filter(o=>[o.number,o.customer,...o.lines.map(l=>l.sku)].join(' ').toLowerCase().includes(search.toLowerCase()));
  const order=data.orders.find(o=>o.id===selected);
