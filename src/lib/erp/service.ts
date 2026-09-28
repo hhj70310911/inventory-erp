@@ -1,3 +1,4 @@
+import { customerImportRows } from './customer-import';
 import bcrypt from 'bcryptjs';
 import { Prisma, type User } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
@@ -21,6 +22,7 @@ const businessDate=(v?:string)=>v?new Date(v+'T00:00:00Z'):new Date();
 function exchange(c:string,v?:string){if(c==='AUD')return new Prisma.Decimal(1);if(!v||new Prisma.Decimal(v).lte(0))throw new ErpError('人民幣交易必須填寫大於零的匯率（1 CNY 等於多少 AUD）');return new Prisma.Decimal(v);}
 const line=z.object({skuId:id,quantity:qty,price:money});
 const schema=z.discriminatedUnion('action',[
+ z.object({action:z.literal('importCustomers'),rows:customerImportRows}),
  z.object({action:z.literal('editSku'),id,expectedUpdatedAt:z.string().datetime(),name:text,groupName:z.string().trim().max(160),unit:z.string().trim().min(1).max(20),price:cents}),
  z.object({action:z.literal('deleteSku'),id,expectedUpdatedAt:z.string().datetime()}),
  z.object({action:z.literal('disableSku'),id,expectedUpdatedAt:z.string().datetime()}),
@@ -42,7 +44,7 @@ const schema=z.discriminatedUnion('action',[
 export function can(user:Pick<User,'role'|'employeeRole'|'active'>,action:string) {
  if(!user.active)return false;
  if(user.role==='ADMIN'||user.employeeRole==='MANAGER')return true;
- const permissions:Record<string,string[]>={WAREHOUSE:['ship'],SALES:['sale','customer'],FINANCE:['payment']};
+ const permissions:Record<string,string[]>={WAREHOUSE:['ship'],SALES:['sale','customer','importCustomers'],FINANCE:['payment']};
  return !!user.employeeRole && !!permissions[user.employeeRole]?.includes(action);
 }
 export const seeMoney=(u:Pick<User,'role'|'employeeRole'|'active'>)=>can(u,'payment')||can(u,'receive');
@@ -90,6 +92,15 @@ export async function execute(userId:string,requestKey:string,input:unknown){
   if(data.action==='warehouse'||data.action==='customer'||data.action==='supplier'){
    const v={code:data.code,name:data.name,...(data.action==='warehouse'?{}:{note:data.note})};
    result=data.action==='warehouse'?(await tx.warehouse.create({data:v})).id:data.action==='customer'?(await tx.customer.create({data:v})).id:(await tx.supplier.create({data:v})).id;
+  }
+  if(data.action==='importCustomers'){
+   const codes=data.rows.map(r=>r.code);
+   if(new Set(codes).size!==codes.length)throw new ErpError('檔案內客戶編碼重複，未匯入任何資料');
+   const existing=await tx.customer.findFirst({where:{code:{in:codes}},select:{code:true}});
+   if(existing)throw new ErpError('客戶編碼 '+existing.code+' 已存在，請重新預覽；未匯入任何資料');
+   await tx.customer.createMany({data:data.rows});
+   result=requestKey;
+   await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,count:data.rows.length,codes},reason:'批次新增 '+data.rows.length+' 筆客戶'}});
   }
   if(data.action==='employee'){
    if(user.role!=='ADMIN'&&data.role==='MANAGER')throw new ErpError('只有系統管理員可以指派主管');

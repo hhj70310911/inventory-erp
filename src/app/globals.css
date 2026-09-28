@@ -88,3 +88,12 @@ body{font-family:Inter,"Microsoft JhengHei",sans-serif;background:#f4f6f8;color:
 @media(max-width:1100px){.dashboard-charts{grid-template-columns:minmax(0,1fr)}.distribution{min-height:240px}.daily-card{padding:13px}.daily-card>strong{font-size:22px}}
 @media(max-width:760px){.daily-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-period{align-items:flex-start;flex-direction:column;gap:12px}.period-controls{width:100%}.period-controls label{flex:1}.period-controls input{width:100%}.chart-panel>.section-heading{align-items:flex-start;flex-direction:column;gap:4px}.distribution{gap:16px;padding:14px}.distribution-legend{min-width:125px}.daily-card>strong{font-size:23px}.trend-readout{gap:6px 12px}.erp-main>header h1{font-size:22px}.daily-metrics{gap:9px}.dashboard-period p{font-size:10px}.business-dashboard .daily-card{padding:12px}.daily-card>span{font-size:9px}.profit-chart{padding:0 4px}.trend-days{margin:10px 8px;gap:1px}.trend-days button{padding:5px}.erp-main .dashboard-orders .section-heading{flex-direction:row;align-items:center}}
 .employee-table{margin-top:24px}.employee-table td{vertical-align:middle}.employee-role-guide{margin-top:16px}.employee-role-guide strong{font-weight:600}
+/* Customer import and directory */
+.customer-import { margin: 24px 0; padding: 20px; border: 1px solid #dce5e8; border-radius: 12px; background: #f8fafb; }
+.customer-import h3 { margin-top: 0; }
+.customer-import input[type=file] { background: white; width: 100%; padding: 12px; }
+.customer-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+.customer-template { display: inline-block; text-decoration: none; }
+.customer-management td { max-width: 320px; overflow-wrap: anywhere; white-space: normal; }
+@media(max-width:640px) { .customer-import { padding: 12px; } .customer-management .section-heading { align-items: flex-start; gap: 12px; flex-direction: column; } }
+.customer-import .table-scroll table { min-width: 620px; }
