@@ -97,3 +97,117 @@ body{font-family:Inter,"Microsoft JhengHei",sans-serif;background:#f4f6f8;color:
 .customer-management td { max-width: 320px; overflow-wrap: anywhere; white-space: normal; }
 @media(max-width:640px) { .customer-import { padding: 12px; } .customer-management .section-heading { align-items: flex-start; gap: 12px; flex-direction: column; } }
 .customer-import .table-scroll table { min-width: 620px; }
+/* Mobile workspace: shared records, dedicated phone presentation. */
+.mobile-only,.mobile-bottom-nav,.mobile-quick-actions,.mobile-inventory-cards,.mobile-recent-orders,.mobile-order-lines { display:none; }
+@media(max-width:640px){
+ .mobile-only { display:block; }
+ .erp-shell { background:#f3f5f8; }
+ .erp-sidebar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; background:#173d37; }
+ .erp-sidebar .nav-label,.erp-sidebar nav,.erp-sidebar .erp-brand small,.erp-sidebar .sidebar-bottom>small { display:none; }
+ .erp-sidebar .erp-brand { margin:0; gap:9px; font-size:16px; }
+ .erp-sidebar .sidebar-bottom { border:0; margin:0; padding:0; display:flex; gap:12px; align-items:center; min-width:0; }
+ .erp-sidebar .sidebar-bottom strong { max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+ .erp-sidebar .sidebar-bottom form { margin:0; }
+ .erp-sidebar .sidebar-bottom button { min-height:44px; font-size:12px; }
+ .erp-main { padding:20px 14px calc(98px + env(safe-area-inset-bottom)); }
+ .erp-main>header { margin-bottom:16px; padding-bottom:0; }
+ .erp-main>header h1 { font-size:23px; }
+ .erp-main>header p { line-height:1.7; }
+ .erp-main>header>.quiet { min-width:44px; min-height:44px; font-size:12px; }
+ .erp-main .panel { padding:16px; border-radius:16px; border-color:#e2e8ed; margin-bottom:16px; }
+ .erp-main label { font-size:13px; }
+ .erp-main input,.erp-main select,.erp-main textarea { font-size:16px!important; min-height:48px; border-radius:10px; min-width:0; }
+ .erp-main button.primary,.erp-main button.quiet,.erp-main button.danger { min-height:44px; border-radius:10px; font-size:13px; }
+ .erp-main .form-grid { grid-template-columns:minmax(0,1fr); gap:12px; }
+ .erp-main .chips { gap:8px; }
+ .erp-main .chips>span { max-width:100%; overflow-wrap:anywhere; }
+ .erp-main .mobile-bottom-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); position:fixed; bottom:0; left:0; right:0; z-index:30; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:#fffffff5; border-top:1px solid #dce5e7; box-shadow:0 -4px 24px #183d3508; backdrop-filter:blur(12px); }
+ .mobile-bottom-nav button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:52px; border:0; background:transparent; color:#73828b; font-size:12px; border-radius:12px; }
+ .mobile-bottom-nav button[aria-current=page] { color:#216653; background:#eaf4ef; font-weight:600; }
+ .mobile-more-icon { font-size:23px; line-height:22px; }
+ .mobile-menu-grid { display:grid; gap:10px; padding:20px 0; }
+ .mobile-menu-grid button { display:flex; align-items:center; gap:14px; background:#f3f7f6; border:1px solid #e0e9e5; border-radius:12px; padding:18px; font-size:15px; text-align:left; }
+ .mobile-menu-grid button>span:first-child { color:#73918a; font-size:12px; }
+ .mobile-menu-grid button>span:last-child { margin-left:auto; }
+ .mobile-menu-grid button[aria-current=page] { border-color:#2e6656; color:#216653; }
+ .mobile-quick-actions { display:block; margin:0 0 20px; }
+ .mobile-quick-actions h2 { font-size:15px; margin-bottom:12px; }
+ .mobile-quick-actions>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+ .mobile-quick-actions button { display:flex; flex-direction:column; align-items:center; gap:7px; min-height:108px; padding:12px 6px; background:white; border:1px solid #e2e8ed; border-radius:14px; }
+ .mobile-action-icon { display:flex; align-items:center; justify-content:center; background:#edf6f2; color:#27785f; width:36px; height:36px; border-radius:11px; }
+ .mobile-quick-actions strong { font-size:13px; font-weight:600; }
+ .mobile-quick-actions small { color:#82928f; font-size:10px; }
+ .business-dashboard .daily-card { border-radius:13px; padding:14px 12px; }
+ .daily-card>small { font-size:12px; }
+ .daily-card>span { font-size:10px; line-height:1.5; }
+ .daily-card>strong { font-size:23px; }
+ .daily-metrics:not(.secondary-metrics) .accent-green { order:-1; background:#eaf5ef; }
+ .daily-metrics:not(.secondary-metrics) .accent-blue { order:-1; }
+ .business-dashboard .secondary-metrics { gap:8px; }
+ .secondary-metrics .daily-card>strong { font-size:20px; }
+ .dashboard-period p,.accounting-note { font-size:11px; }
+ .desktop-recent-orders,.desktop-inventory,.desktop-order-lines { display:none; }
+ .mobile-recent-orders { display:grid; }
+ .mobile-recent-orders>button { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px; text-align:left; border-bottom:1px solid #edf0f4; min-width:0; }
+ .mobile-recent-orders>button>div { min-width:0; }
+ .mobile-recent-orders>button>div:last-child { text-align:right; flex-shrink:0; }
+ .mobile-recent-orders strong { display:block; font-size:13px; margin-bottom:6px; overflow-wrap:anywhere; }
+ .mobile-recent-orders small { display:block; color:#8b989f; font-size:10px; overflow-wrap:anywhere; }
+ .stock-create:not(.is-expanded)>form { display:none; }
+ .stock-create .section-heading { margin:0; }
+ .stock-create h2 { margin:0; font-size:14px; }
+ .stock-create.is-expanded form { margin-top:16px; }
+ .mobile-inventory-cards { display:grid; gap:12px; margin:16px 0; }
+ .mobile-stock-card { background:#fff; border:1px solid #dfe7e9; border-radius:14px; padding:16px; }
+ .mobile-stock-heading { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+ .mobile-stock-heading>div { min-width:0; }
+ .mobile-stock-heading h3 { margin:5px 0; font-size:17px; font-weight:600; overflow-wrap:anywhere; }
+ .mobile-stock-heading small { color:#80908e; font-size:11px; }
+ .erp-main .mobile-stock-heading p { margin:0; font-size:12px; }
+ .mobile-stock-total { text-align:right; flex-shrink:0; }
+ .mobile-stock-total strong { display:block; color:#216653; font-size:24px; font-variant-numeric:tabular-nums; }
+ .mobile-stock-total span { font-size:12px; color:#758882; }
+ .erp-main .mobile-stock-card details { padding:0; margin-top:16px; border-top:1px solid #eef1f2; border-bottom:0; }
+ .mobile-stock-card summary { min-height:48px; padding:14px 0; font-size:13px; color:#466359; }
+ .mobile-stock-card summary>span { float:right; font-size:11px; color:#85958e; }
+ .mobile-warehouse-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+ .mobile-warehouse-grid>div { background:#f3f7f5; border-radius:9px; padding:11px; }
+ .mobile-warehouse-grid span { display:block; font-size:12px; color:#738a80; overflow-wrap:anywhere; }
+ .mobile-warehouse-grid strong { display:block; margin-top:4px; font-size:16px; overflow-wrap:anywhere; }
+ .mobile-warehouse-grid small { font-size:11px; font-weight:400; }
+ .mobile-stock-card>button { width:100%; margin-top:12px; }
+ .erp-main .sales-panel { padding:0; background:transparent; border:0; }
+ .sales-filters { background:white; border:1px solid #e2e8ed; border-radius:14px; margin-bottom:14px; padding:12px; }
+ .filter-tabs { flex-wrap:nowrap; overflow-x:auto; width:100%; padding-bottom:4px; }
+ .erp-main .filter-tabs button { flex-shrink:0; min-height:44px; font-size:12px; }
+ .erp-main details.order-card { border:1px solid #e0e7ec; border-radius:16px; background:white; margin:12px 0; overflow:hidden; }
+ .erp-main .order-card>summary { padding:16px; gap:12px 8px; }
+ .order-identity>strong { font-size:11px; color:#86928e; overflow-wrap:anywhere; }
+ .order-identity>small { font-size:15px; font-weight:600; color:#2c4940; }
+ .order-identity small span { font-size:11px; font-weight:400; color:#87968e; }
+ .order-amount>strong { font-size:18px; }
+ .status-pill { padding:5px 8px; border-radius:6px; font-size:11px; }
+ .order-expanded { padding:14px; background:#fafcfb; }
+ .order-section-heading .quiet { width:100%; }
+ .mobile-order-lines { display:grid; gap:10px; }
+ .mobile-order-lines article { padding:14px; border:1px solid #e4ebe7; border-radius:12px; background:white; }
+ .mobile-order-lines article>strong { display:block; font-size:14px; overflow-wrap:anywhere; }
+ .mobile-order-lines article>small { font-size:11px; color:#86938c; }
+ .mobile-order-lines dl { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0 0; }
+ .mobile-order-lines dt { font-size:10px; color:#83928b; }
+ .mobile-order-lines dd { margin:5px 0 0; font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+ .erp-main .action-drawer { width:100%; border:0; }
+ .drawer-heading { padding:14px 18px; }
+ .drawer-heading .erp-eyebrow { display:none; }
+ .drawer-heading h2 { font-size:20px; }
+ .drawer-body { padding:0 16px calc(20px + env(safe-area-inset-bottom)); }
+ .action-drawer .line-editor>.form-grid { border:1px solid #e2e9e5; padding:14px; }
+ .action-drawer .drawer-submit { position:sticky; bottom:0; z-index:2; padding:12px 0 calc(12px + env(safe-area-inset-bottom)); background:#fff; margin-top:20px; }
+ .drawer-submit .primary { width:100%; min-height:50px; margin:0; }
+ .erp-footer { font-size:10px; line-height:1.7; }
+}
+@media(min-width:641px){ .erp-shell .mobile-only { display:none!important; } }
+@media(max-width:640px){
+ .erp-sidebar { flex-direction:row; }
+ .mobile-order-ship { width:100%; margin:0 0 16px; }
+}

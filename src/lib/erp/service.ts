@@ -1,3 +1,4 @@
+import { supplierImportRows } from './supplier-import';
 import { customerImportRows } from './customer-import';
 import bcrypt from 'bcryptjs';
 import { Prisma, type User } from '@prisma/client';
@@ -23,6 +24,7 @@ function exchange(c:string,v?:string){if(c==='AUD')return new Prisma.Decimal(1);
 const line=z.object({skuId:id,quantity:qty,price:money});
 const schema=z.discriminatedUnion('action',[
  z.object({action:z.literal('importCustomers'),rows:customerImportRows}),
+ z.object({action:z.literal('importSuppliers'),rows:supplierImportRows}),
  z.object({action:z.literal('editSku'),id,expectedUpdatedAt:z.string().datetime(),name:text,groupName:z.string().trim().max(160),unit:z.string().trim().min(1).max(20),price:cents}),
  z.object({action:z.literal('deleteSku'),id,expectedUpdatedAt:z.string().datetime()}),
  z.object({action:z.literal('disableSku'),id,expectedUpdatedAt:z.string().datetime()}),
@@ -101,6 +103,15 @@ export async function execute(userId:string,requestKey:string,input:unknown){
    await tx.customer.createMany({data:data.rows});
    result=requestKey;
    await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,count:data.rows.length,codes},reason:'批次新增 '+data.rows.length+' 筆客戶'}});
+  }
+  if(data.action==='importSuppliers'){
+   const codes=data.rows.map(r=>r.code);
+   if(new Set(codes).size!==codes.length)throw new ErpError('檔案內供應商編碼重複，未匯入任何資料');
+   const existing=await tx.supplier.findFirst({where:{code:{in:codes}},select:{code:true}});
+   if(existing)throw new ErpError('供應商編碼 '+existing.code+' 已存在，請重新預覽；未匯入任何資料');
+   await tx.supplier.createMany({data:data.rows});
+   result=requestKey;
+   await tx.auditEvent.update({where:{id:event.id},data:{after:{fingerprint,count:data.rows.length,codes},reason:'批次新增 '+data.rows.length+' 筆供應商'}});
   }
   if(data.action==='employee'){
    if(user.role!=='ADMIN'&&data.role==='MANAGER')throw new ErpError('只有系統管理員可以指派主管');

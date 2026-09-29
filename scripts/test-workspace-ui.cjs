@@ -33,12 +33,12 @@ module.exports=async function testWorkspace(page){
  assert.ok(await page.locator('.erp-main').evaluate(el=>el.getBoundingClientRect().right<=innerWidth+1));
  await page.screenshot({path:'artifacts/erp-sales-mobile.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'＋ 新增銷售單',exact:true}).click();dialog=page.getByRole('dialog',{name:'建立銷售單'});await dialog.waitFor();assert.ok(await dialog.evaluate(el=>el.getBoundingClientRect().width<=innerWidth));await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
- await page.locator('nav').getByRole('button',{name:/營運總覽/}).click();await page.screenshot({path:'artifacts/erp-overview-mobile.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('navigation',{name:'手機主要導覽'}).getByRole('button',{name:'首頁',exact:true}).click();await page.screenshot({path:'artifacts/erp-overview-mobile.png',fullPage:true,animations:'disabled'});
  const snapshot=await (await page.request.get('http://127.0.0.1:3105/api/erp')).json();
  let mocked={...snapshot,user:{...snapshot.user,admin:false,manager:false,financial:false,permissions:['ship']},totals:{due:null,profit:null},orders:snapshot.orders.map(o=>({...o,paid:null,due:null,cost:null,profit:null,payments:[]}))};
  await page.route('**/api/erp',route=>route.fulfill({json:mocked}));await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:/客戶未收款/}).count(),0);
- await page.locator('nav').getByRole('button',{name:/銷售與出貨/}).click();assert.equal(await page.getByRole('button',{name:/新增銷售單/}).count(),0);assert.equal(await page.getByRole('group',{name:'訂單狀態篩選'}).getByRole('button',{name:/未收清/}).count(),0);
+ await page.getByRole('navigation',{name:'手機主要導覽'}).getByRole('button',{name:'銷售',exact:true}).click();assert.equal(await page.getByRole('button',{name:/新增銷售單/}).count(),0);assert.equal(await page.getByRole('group',{name:'訂單狀態篩選'}).getByRole('button',{name:/未收清/}).count(),0);
  await page.locator('.order-card summary').first().click();assert.equal(await page.locator('.order-financials').count(),0);
  mocked={...snapshot,orders:[]};await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();await page.getByRole('heading',{name:'尚無銷售訂單'}).waitFor();
  await page.unroute('**/api/erp');await page.reload();await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor();

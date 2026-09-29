@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/user/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:'C:/Users/user/AppData/Local/ms-playwright/chromium-1223/chrome-win64/chrome.exe'});try{
+ const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:3106/login');await page.getByLabel('Email',{exact:true}).fill('admin@mobile-test.invalid');await page.getByLabel('密碼',{exact:true}).fill('Test12345');await page.getByRole('button',{name:'登入',exact:true}).click();
+ await page.getByRole('heading',{name:'營運總覽',exact:true}).waitFor({timeout:60000});
+ const nav=page.getByRole('navigation',{name:'手機主要導覽'});
+ await nav.waitFor();assert.equal(await page.getByRole('navigation',{name:'電腦主要導覽'}).isVisible(),false);
+ await page.screenshot({animations:'disabled',path:'artifacts/mobile-home.png'});
+ await nav.getByRole('button',{name:'庫存',exact:true}).click();
+ const cards=page.locator('.mobile-inventory-cards').first();assert.match(await cards.innerText(),/996/);
+ await cards.getByText('查看各倉庫').click();assert.match(await cards.innerText(),/296/);assert.match(await cards.innerText(),/700/);
+ await page.getByLabel('搜尋商品',{exact:true}).fill('找不到');assert.equal(await cards.locator('article').count(),0);await page.getByLabel('搜尋商品',{exact:true}).fill('Bar');
+ await page.screenshot({animations:'disabled',path:'artifacts/mobile-stock.png'});
+ await cards.getByRole('button',{name:'查看批次與成本 →'}).click();await page.getByRole('heading',{name:'批次帳務',exact:true}).waitFor();assert.equal(await page.getByLabel('搜尋批次帳務').inputValue(),'BAR-01');
+ await nav.getByRole('button',{name:'更多'}).click();let dialog=page.getByRole('dialog',{name:'全部功能'});await dialog.getByRole('button',{name:/帳號管理/}).click();await page.getByRole('heading',{name:'帳號管理',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'銷售',exact:true}).click();await page.locator('.order-card>summary').first().click();assert.ok(await page.locator('.mobile-order-lines').isVisible());assert.equal(await page.locator('.desktop-order-lines').isVisible(),false);assert.match(await page.locator('.mobile-order-lines').innerText(),/Bar pro/);
+ await page.screenshot({animations:'disabled',path:'artifacts/mobile-sales.png'});
+ const requests=[];await page.route('**/api/erp',route=>{if(route.request().method()==='POST'){requests.push(route.request().postDataJSON());return route.fulfill({json:{id:'test'}});}return route.continue();});
+ await page.getByRole('button',{name:'＋ 新增銷售單',exact:true}).first().click();dialog=page.getByRole('dialog',{name:'建立銷售單'});
+ await dialog.locator('select[name=customerId]').selectOption({index:1});await dialog.locator('select[name=sku0]').selectOption({index:1});await dialog.locator('input[name=qty0]').fill('2');await dialog.locator('input[name=price0]').fill('55');
+ await page.screenshot({animations:'disabled',path:'artifacts/mobile-sale-form.png'});await dialog.getByRole('button',{name:'建立銷售單',exact:true}).click();await dialog.waitFor({state:'detached'});assert.equal(requests[0].lines[0].quantity,2);assert.equal(requests[0].lines[0].price,'55');
+ await page.getByRole('button',{name:'安排此單出貨 →',exact:true}).click();dialog=page.getByRole('dialog',{name:'從倉庫出貨'});assert.ok(await dialog.locator('select[name=orderId]').inputValue());await dialog.locator('select[name=warehouseId]').selectOption({index:1});await dialog.locator('input[type=number]').first().fill('1');await dialog.getByRole('button',{name:'確認 FIFO 出庫'}).click();await dialog.waitFor({state:'detached'});assert.equal(requests[1].lines[0].quantity,1);
+ await page.unroute('**/api/erp');
+ for(const width of [360,390,640]){await page.setViewportSize({width,height:844});await nav.getByRole('button',{name:'首頁',exact:true}).click();assert.ok(await page.evaluate(()=>document.querySelector('.erp-main').getBoundingClientRect().right<=innerWidth+1));assert.ok(await nav.evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight+1));}
+ await page.setViewportSize({width:1440,height:1000});assert.equal(await nav.isVisible(),false);const desktop=page.getByRole('navigation',{name:'電腦主要導覽'});await desktop.getByRole('button',{name:/商品與庫存/}).click();assert.ok(await page.locator('.desktop-inventory').first().isVisible());assert.equal(await cards.isVisible(),false);assert.ok(await page.locator('.stock-create form').isVisible());await page.screenshot({animations:'disabled',path:'artifacts/mobile-change-desktop.png'});
+ const snap=await (await page.request.get('http://127.0.0.1:3106/api/erp')).json();
+ await page.route('**/api/erp',route=>route.fulfill({json:{...snap,user:{...snap.user,admin:false,manager:false,financial:false,permissions:['ship']},dailyProfit:null}}));await page.setViewportSize({width:390,height:844});await page.reload();await nav.waitFor();assert.equal(await page.getByRole('button',{name:/新增銷售/}).count(),0);assert.equal(await page.getByRole('button',{name:/調整剩餘成本/}).count(),0);await nav.getByRole('button',{name:'更多'}).click();dialog=page.getByRole('dialog',{name:'全部功能'});assert.equal(await dialog.getByRole('button',{name:/批次帳務|客戶帳款|操作紀錄/}).count(),0);await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});assert.deepEqual(errors,[]);
+ console.log('PASS: phone navigation, role visibility, warehouse totals, stock search, batch shortcut, order cards, sale/ship forms, 360/390/640 widths and unchanged desktop tables.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
