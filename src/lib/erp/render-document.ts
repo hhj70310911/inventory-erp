@@ -8,7 +8,7 @@ export async function renderDocument(doc:OrderDocument,company:string,includeNot
  const pages:{commands:Command[];height:number}[]=[];let commands:Command[]=[],y=0;
  function wrap(text:string,size:number,bold=false,maxWidth=width-margin*2){measure!.font=`${bold?'bold ':''}${size}px ${font}`;const lines:string[]=[];for(const para of text.split(/\r?\n/)){let line='';for(const ch of Array.from(para)){if(line&&measure!.measureText(line+ch).width>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}return lines;}
  function raw(text:string,size=24,bold=false,align:CanvasTextAlign='left',x=margin){commands.push({text,x,y,size,bold,align});y+=size*1.5;}
- function start(){commands=[];y=38;for(const line of wrap(company.trim()||'庫務 ERP',32,true))raw(line,32,true,'center',width/2);raw(doc.kind==='order'?'銷售訂單明細':'銷售出貨單',30,true,'center',width/2);raw(doc.state==='REVERSED'?'已沖銷 · 不作有效出貨憑證':doc.state==='DRAFT'?'草稿':doc.kind==='shipment'?'本次出貨':'訂單明細 · 非出貨證明',20,true,'center',width/2);y+=18;}
+ function start(){commands=[];y=38;for(const line of wrap(company.trim()||'三泰通',32,true))raw(line,32,true,'center',width/2);raw(doc.kind==='order'?'銷售訂單明細':'銷售出貨單',30,true,'center',width/2);raw(doc.state==='REVERSED'?'已沖銷 · 不作有效出貨憑證':doc.state==='DRAFT'?'草稿':doc.kind==='shipment'?'本次出貨':'訂單明細 · 非出貨證明',20,true,'center',width/2);y+=18;}
  function next(){pages.push({commands,height:y+90});start();}
  function space(h:number){if(y+h>maxHeight-90)next();}
  function add(text:string,size=24,bold=false){for(const line of wrap(text,size,bold)){space(size*1.5);raw(line,size,bold);}}
