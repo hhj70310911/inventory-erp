@@ -22,6 +22,9 @@ enum OrderStatus {
 }
 
 model User {
+  cashView Boolean @default(false)
+  cashEdit Boolean @default(false)
+  cashEntries CashEntry[]
   employeeRole   EmployeeRole?
   active         Boolean           @default(true)
   receipts       PurchaseReceipt[]
@@ -553,4 +556,26 @@ model BatchCostAdjustment {
   batch InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
   event AuditEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
   @@unique([batchId, version])
+}
+
+model CashEntry {
+  id String @id @default(cuid())
+  date DateTime @db.Date
+  kind String @db.VarChar(20)
+  category String
+  amount Decimal @db.Decimal(18, 2)
+  currency String @db.VarChar(3)
+  fxToAud Decimal @db.Decimal(18, 8)
+  amountAud Decimal @db.Decimal(28, 10)
+  account String
+  counterparty String @default("")
+  note String @default("") @db.Text
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  version Int @default(0)
+  voided Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([date, voided])
+  @@index([actorId])
 }
