@@ -48,7 +48,7 @@ async function main(){
  if(process.argv.includes('--browser')){
  server=spawn(process.execPath,[require.resolve('next/dist/bin/next'),'start','-p','3106'],{env:{...process.env,NEXTAUTH_URL:'http://127.0.0.1:3106',AUTH_URL:'http://127.0.0.1:3106'},stdio:'ignore',windowsHide:true});
  let ready=false;for(let i=0;i<40;i++){try{if((await fetch('http://127.0.0.1:3106/login')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,500));}if(!ready)throw Error('Test server did not start');
- const browser=spawnSync(process.execPath,['scripts/test-cash-browser.cjs'],{env:process.env,stdio:'inherit',windowsHide:true});assert.equal(browser.status,0);
+ const browser=spawnSync(process.execPath,[process.argv.includes('--mobile-app')?'scripts/test-mobile-app.cjs':'scripts/test-cash-browser.cjs'],{env:process.env,stdio:'inherit',windowsHide:true});assert.equal(browser.status,0);
  }
  }finally{if(server){server.kill();await new Promise(r=>server!.once('exit',r));}if(!/^cash_test_[a-f0-9]{32}$/.test(schema))throw Error('Invalid schema');await db.$executeRawUnsafe('DROP SCHEMA "'+schema+'" CASCADE');await db.$disconnect();console.log('Removed isolated test schema and stopped test server.');}
 }

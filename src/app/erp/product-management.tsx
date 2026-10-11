@@ -1,8 +1,8 @@
 'use client';
 import {useState} from 'react';
 export type Product={id:string;code:string;name:string;groupName:string;unit:string;price:string;active:boolean;updatedAt:string;hasHistory:boolean;stock:number;pending:number};
-export default function ProductManagement({products,manage,busy,save}:{products:Product[];manage:boolean;busy:boolean;save:(input:Record<string,unknown>)=>Promise<boolean>}){
- const [editing,setEditing]=useState<string|null>(null),[filter,setFilter]=useState('active');
+export default function ProductManagement({products,manage,busy,save,initialFilter="active"}:{initialFilter?:string;products:Product[];manage:boolean;busy:boolean;save:(input:Record<string,unknown>)=>Promise<boolean>}){
+ const [editing,setEditing]=useState<string|null>(null),[filter,setFilter]=useState(initialFilter);
  const current=products.find(p=>p.id===editing);
  async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!current)return;const values=Object.fromEntries(new FormData(e.currentTarget));if(await save({...values,action:'editSku',id:current.id,expectedUpdatedAt:current.updatedAt}))setEditing(null);}
  async function action(p:Product,action:string){const message=action==='deleteSku'?`永久刪除誤建商品「${p.code} · ${p.name}」？商品資料無法復原，操作紀錄仍會保留。`:action==='disableSku'?`停用「${p.code} · ${p.name}」？之後不能新增進貨或銷售，歷史帳務保留。`:`重新啟用「${p.code} · ${p.name}」？`;if(window.confirm(message))await save({action,id:p.id,expectedUpdatedAt:p.updatedAt});}
